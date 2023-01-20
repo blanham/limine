@@ -49,14 +49,21 @@ struct file_handle *fopen(struct volume *part, const char *filename) {
 
     struct file_handle *ret;
 
-#if defined (BIOS)
+// XXX: Fix this before merging
+//#if defined (BIOS) || defined (UEFI)
     if (part->pxe) {
+#if defined (BIOS)
         if ((ret = tftp_open(0, 69, filename)) == NULL) {
             return NULL;
         }
+#elif defined (UEFI)
+        if ((ret = tftp_open(part, filename)) == NULL) {
+            return NULL;
+        }
+#endif
         goto success;
     }
-#endif
+//#endif
 
     if ((ret = ext2_open(part, filename)) != NULL) {
         goto success;

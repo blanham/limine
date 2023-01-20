@@ -28,15 +28,37 @@ void stage3_common(void);
 #if defined (UEFI)
 extern symbol __image_base;
 
-noreturn void uefi_entry(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
+
+// set up globals and disable ConOut cursor
+static void _uefi_setup(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
     gST = SystemTable;
     gBS = SystemTable->BootServices;
     gRT = SystemTable->RuntimeServices;
     efi_image_handle = ImageHandle;
 
+    gST->ConOut->EnableCursor(gST->ConOut, false);
+}
+
+static void _uefi_arch_setup() {
+#if defined (__x86_64__) || defined (__i386__)
+    init_gdt();
+#endif
+
+#if defined (__x86_64__)
+    if ((uintptr_t)__image_base > 0x100000000) {
+        panic(false, "Limine does not support being loaded above 4GiB");
+    }
+#endif
+}
+
+noreturn void uefi_entry(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
     EFI_STATUS status;
 
-    gST->ConOut->EnableCursor(gST->ConOut, false);
+    _uefi_setup(ImageHandle, SystemTable);
+
+    const char *boot_msg = "Booting from UEFI...\n";
+    while (*boot_msg)
+        serial_out(*boot_msg++);
 
     init_memmap();
 
@@ -47,19 +69,24 @@ noreturn void uefi_entry(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) 
         print("WARNING: Failed to disable watchdog timer!\n");
     }
 
-#if defined (__x86_64__) || defined (__i386__)
-    init_gdt();
-#endif
-
-#if defined (__x86_64__)
-    if ((uintptr_t)__image_base > 0x100000000) {
-        panic(false, "Limine does not support being loaded above 4GiB");
-    }
-#endif
+    _uefi_arch_setup();
 
     disk_create_index();
 
     boot_volume = NULL;
+        EFI_GUID loaded_img_prot_guid = EFI_LOADED_IMAGE_PROTOCOL_GUID;
+        EFI_LOADED_IMAGE_PROTOCOL *loaded_image = NULL;
+
+        status = gBS->HandleProtocol(ImageHandle, &loaded_img_prot_guid, (void **)&loaded_image);
+        if (status) {
+            panic(false, "Could not get loaded image protocol");
+        }
+
+    boot_volume = disk_volume_from_efi_handle(loaded_image->DeviceHandle);
+    goto success;
+
+
+    
 
     EFI_HANDLE current_handle = ImageHandle;
     for (size_t j = 0; j < 25; j++) {
@@ -67,6 +94,8 @@ noreturn void uefi_entry(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) 
 could_not_match:
             print("WARNING: Could not meaningfully match the boot device handle with a volume.\n");
             print("         Using the first volume containing a Limine configuration!\n");
+
+            panic(false, "No volume contained a Limine configuration file");
 
             for (size_t i = 0; i < volume_index_i; i++) {
                 struct file_handle *f;
@@ -104,9 +133,7 @@ could_not_match:
         EFI_GUID loaded_img_prot_guid = EFI_LOADED_IMAGE_PROTOCOL_GUID;
         EFI_LOADED_IMAGE_PROTOCOL *loaded_image = NULL;
 
-        status = gBS->HandleProtocol(current_handle, &loaded_img_prot_guid,
-                                     (void **)&loaded_image);
-
+        status = gBS->HandleProtocol(current_handle, &loaded_img_prot_guid, (void **)&loaded_image);
         if (status) {
             goto could_not_match;
         }
@@ -114,13 +141,17 @@ could_not_match:
         boot_volume = disk_volume_from_efi_handle(loaded_image->DeviceHandle);
 
         if (boot_volume != NULL) {
-            stage3_common();
+            //stage3_common();
+            goto success;
         }
 
         current_handle = loaded_image->ParentHandle;
     }
 
     goto could_not_match;
+
+success:
+    stage3_common();
 }
 #endif
 

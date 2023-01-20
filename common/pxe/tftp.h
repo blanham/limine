@@ -38,7 +38,12 @@ struct pxenv_get_file_size {
 #define TFTP_CLOSE 0x21
 
 //server_ip and server_port can be 0 for default
+// XXX: This needs to be fixed
+#if defined (BIOS)
 struct file_handle *tftp_open(uint32_t server_ip, uint16_t server_port, const char *name);
+#elif defined (UEFI)
+struct file_handle *tftp_open(struct volume *part,  const char *name);
+#endif
 
 uint32_t get_boot_server_info(void);
 

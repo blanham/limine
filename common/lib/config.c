@@ -18,7 +18,7 @@ no_unwind bool bad_config = false;
 
 static char *config_addr;
 
-int init_config_disk(struct volume *part) {
+struct file_handle *scan_for_config(struct volume *part) {
     struct file_handle *f;
 
     bool old_cif = case_insensitive_fopen;
@@ -29,9 +29,17 @@ int init_config_disk(struct volume *part) {
      && (f = fopen(part, "/boot/limine/limine.cfg")) == NULL
      && (f = fopen(part, "/EFI/BOOT/limine.cfg")) == NULL) {
         case_insensitive_fopen = old_cif;
-        return -1;
+        return NULL;
     }
     case_insensitive_fopen = old_cif;
+
+    return f;
+}
+
+int init_config_disk(struct volume *part) {
+    struct file_handle *f = scan_for_config(part);
+    if (f == NULL)
+        return -1;
 
     size_t config_size = f->size + 2;
     config_addr = ext_mem_alloc(config_size);
@@ -43,6 +51,7 @@ int init_config_disk(struct volume *part) {
     return init_config(config_size);
 }
 
+// XXX: This doesn't seem to be called anywhere
 #if defined (BIOS)
 int init_config_pxe(void) {
     struct file_handle *f;

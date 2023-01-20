@@ -8,6 +8,7 @@
 #elif defined (UEFI)
 #  include <efi.h>
 #  include <crypt/blake2b.h>
+#  include <pxe/pxe.h>
 #endif
 #include <lib/misc.h>
 #include <lib/print.h>
@@ -323,6 +324,15 @@ struct volume *disk_volume_from_efi_handle(EFI_HANDLE efi_handle) {
 
     status = gBS->HandleProtocol(efi_handle, &block_io_guid, (void **)&block_io);
     if (status) {
+        // query the PXE protocol to discover if we were loaded that way or from disk
+        EFI_GUID pxe_base_code_protocol_guid = EFI_PXE_BASE_CODE_PROTOCOL_GUID;
+        EFI_PXE_BASE_CODE_PROTOCOL *pxe_base_code = NULL;
+
+
+        status = gBS->HandleProtocol(efi_handle, &pxe_base_code_protocol_guid, (void **)&pxe_base_code);
+        if (!status) {
+            return pxe_bind_volume(pxe_base_code);
+        }
         return NULL;
     }
 
@@ -564,7 +574,8 @@ void disk_create_index(void) {
 
     if (status != EFI_SUCCESS) {
 fail:
-        panic(false, "LocateHandle for BLOCK_IO_PROTOCOL failed. Machine not supported by Limine UEFI.");
+        //panic(false, "LocateHandle for BLOCK_IO_PROTOCOL failed. Machine not supported by Limine UEFI.");
+        return;
     }
 
     volume_index = ext_mem_alloc(sizeof(struct volume) * MAX_VOLUMES);

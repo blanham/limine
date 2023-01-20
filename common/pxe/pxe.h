@@ -4,7 +4,12 @@
 #include <stdint.h>
 #include <lib/part.h>
 
+#if defined (BIOS)
 struct volume *pxe_bind_volume(void);
+#elif defined (UEFI)
+struct volume *pxe_bind_volume(void *pxe_base);
+#endif
+
 void pxe_init(void);
 int pxe_call(uint16_t opcode, uint16_t buf_seg, uint16_t buf_off);
 

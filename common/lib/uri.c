@@ -164,9 +164,10 @@ static struct file_handle *uri_fslabel_dispatch(char *fslabel, char *path) {
     return fopen(volume, path);
 }
 
-#if defined (BIOS)
 static struct file_handle *uri_tftp_dispatch(char *root, char *path) {
     uint32_t ip;
+    print("tftp: root: %s path: %s\n", root, path);
+
     if (!strcmp(root, "")) {
         ip = 0;
     } else {
@@ -174,18 +175,36 @@ static struct file_handle *uri_tftp_dispatch(char *root, char *path) {
             panic(true, "tftp: Invalid ipv4 address: %s", root);
         }
     }
+#if defined (UEFI)
+    if (ip != 0) {
+        // TODO: Support IP address in UEFI mode
+        panic(true, "tftp: Cannot specify IP address in UEFI");
+    }
+#endif
 
     struct file_handle *ret;
+#if defined (BIOS)
     if ((ret = tftp_open(ip, 69, path)) == NULL) {
         return NULL;
     }
+#elif defined (UEFI)
+    struct volume *volume = boot_volume;
+    if (volume->pxe == false) {
+        panic(true, "tftp: No PXE volume found");
+    }
+
+    if ((ret = tftp_open(volume, path)) == NULL) {
+        return NULL;
+    }
+#endif
+
 
     return ret;
 }
-#endif
 
 static struct file_handle *uri_boot_dispatch(char *s_part, char *path) {
-#if defined (BIOS)
+    print("boot: part: %s path: %s\n", s_part, path);
+#if defined (BIOS) || defined (UEFI)
     if (boot_volume->pxe)
         return uri_tftp_dispatch(s_part, path);
 #endif
@@ -242,10 +261,8 @@ struct file_handle *uri_open(char *uri) {
         ret = uri_guid_dispatch(root, path);
     } else if (!strcmp(resource, "fslabel")) {
         ret = uri_fslabel_dispatch(root, path);
-#if defined (BIOS)
     } else if (!strcmp(resource, "tftp")) {
         ret = uri_tftp_dispatch(root, path);
-#endif
     } else {
         panic(true, "Resource `%s` not valid.", resource);
     }
